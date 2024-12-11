@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import os
 import threading
 from enum import Enum
@@ -10,6 +11,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import handlers
 import keyboards.main
 from db import db
+from services import reminder_service
 from services.reminder_service import periodic_update
 
 # Настройка бота
@@ -23,6 +25,7 @@ start_router = Router()
 # Обработчик команды /start
 @start_router.message(CommandStart())
 async def cmd_start(message: types.Message):
+    db.save_user(message.from_user.id, message.from_user.username)
     await message.answer("Привет! Я бот с напоминаниями. Введите /help, чтобы узнать, что я умею.",
                          reply_markup=keyboards.main.keyboard)
 
@@ -39,6 +42,31 @@ async def handle_callback(callback: types.CallbackQuery):
                                       "/add_category - добавить категорию\n" +
                                       "/remind_category - список напоминаний по категориям\n" +
                                       "/help - помощь")
+
+    if callback.data.startswith("remind_"):
+        message, remind_id = callback.data.replace("remind_", "", 1).split(":")
+        print(message, remind_id)
+        if message == "ok":
+            with db.SessionLocal() as session:
+                reminder = session.query(db.Reminder).filter(db.Reminder.id == remind_id).first()
+                if reminder.reminder_time < datetime.datetime.now():
+                    reminder.is_done = True
+                reminder.is_delta_done = True
+                session.commit()
+        elif message == "cancel":
+            await callback.message.answer("Напоминание отменено")
+            with db.SessionLocal() as session:
+                session.query(db.Reminder).filter(db.Reminder.id == remind_id).update({db.Reminder.is_done: True, db.Reminder.is_delta_done: True})
+                session.commit()
+        elif message == "more":
+            with db.SessionLocal() as session:
+                reminder = session.query(db.Reminder).filter(db.Reminder.id == remind_id).first()
+                if reminder.is_delta_done:
+                    reminder.reminder_time = datetime.datetime.now() + datetime.timedelta(minutes=5)
+                else:
+                    reminder.reminder_time_delta = datetime.datetime.now() + datetime.timedelta(minutes=5)
+                reminder.is_delta_done = False
+                session.commit()
 
 
 async def main() -> None:

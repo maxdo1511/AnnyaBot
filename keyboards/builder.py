@@ -2,13 +2,10 @@ from aiogram.types import ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 
-def inline(text: str | list):
+def inline(data: dict, id):
     builder = InlineKeyboardBuilder()
 
-    if isinstance(text, str):
-        text = [text]
-
-    [builder.button(text=t) for t in text]
+    [builder.button(text=data[d], one_time_keyboard=True, callback_data=f"{d}:{id}" if id is not None else d) for d in data.keys()]
 
     return builder.as_markup()
 

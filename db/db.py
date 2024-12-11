@@ -1,4 +1,3 @@
-import logging
 import os
 
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, select, create_engine, and_, func, text, Boolean, \
@@ -21,6 +20,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)  # Дата создания пользователя
 
     reminders = relationship("Reminder", back_populates="user")
+    categories = relationship("Category", secondary="user_categories", back_populates="users")
 
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', created_at='{self.created_at}')>"
@@ -39,7 +39,7 @@ class Reminder(Base):
     is_done = Column(Boolean, default=False)  # Завершено ли напоминание
 
     user = relationship("User", back_populates="reminders")
-    categories = relationship("ReminderCategory", back_populates="reminder")
+    categories = relationship("Category", secondary="reminder_categories", back_populates="reminders")
 
     def __repr__(self):
         return f"<Reminder(id={self.id}, user_id={self.user_id}, message='{self.message}', reminder_time='{self.reminder_time}')>"
@@ -49,9 +49,9 @@ class Category(Base):
     __tablename__ = 'categories'
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True, nullable=False)  # Название категории
-
-    reminders = relationship("ReminderCategory", back_populates="category")
+    name = Column(String, unique=True, nullable=False)
+    reminders = relationship("Reminder", secondary="reminder_categories")
+    users = relationship("User", secondary="user_categories")
 
     def __repr__(self):
         return f"<Category(id={self.id}, name='{self.name}')>"
@@ -63,11 +63,18 @@ class ReminderCategory(Base):
     reminder_id = Column(Integer, ForeignKey('reminders.id'), primary_key=True)
     category_id = Column(Integer, ForeignKey('categories.id'), primary_key=True)
 
-    reminder = relationship("Reminder", back_populates="categories")
-    category = relationship("Category", back_populates="reminders")
-
     def __repr__(self):
         return f"<ReminderCategory(reminder_id={self.reminder_id}, category_id={self.category_id})>"
+
+
+class UserCategory(Base):
+    __tablename__ = 'user_categories'
+
+    user_id = Column(Integer, ForeignKey('users.id'), primary_key=True)
+    category_id = Column(Integer, ForeignKey('categories.id'), primary_key=True)
+
+    def __repr__(self):
+        return f"<UserCategory(user_id={self.user_id}, category_id={self.category_id})>"
 
 
 DB_USER = os.getenv("DB_USER")
@@ -76,6 +83,18 @@ DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@localhost/annbot"  # За�
 engine = create_engine(DATABASE_URL, echo=False)
 
 SessionLocal = sessionmaker(bind=engine)
+
+def save_user(telegram_id, username):
+    if get_user_by_telegram_id(telegram_id) is not None:
+        return
+    with SessionLocal() as session:
+        user = User(
+            telegram_id=telegram_id,
+            username=username,
+            created_at=datetime.datetime.now()
+        )
+        session.add(user)
+        session.commit()
 
 
 def save_reminder(reminder):
@@ -99,6 +118,26 @@ def get_all_user_reminders(user_id):
     with SessionLocal() as session:
         user = session.query(User).filter(User.id == user_id).first()
         reminders = user.reminders
+
+    for r in reminders:
+        r.message = encryption.decrypt(r.message)
+
+    return reminders
+
+
+def get_user_tg_id_categories(tg_id):
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.telegram_id == tg_id).first()
+        categories = user.categories
+
+    return categories
+
+
+def get_valid_user_reminders(user_id):
+    with SessionLocal() as session:
+        reminders = session.query(Reminder).filter(
+            and_(Reminder.user_id == user_id, Reminder.is_done == False)
+        ).order_by(Reminder.reminder_time).all()
 
     for r in reminders:
         r.message = encryption.decrypt(r.message)
