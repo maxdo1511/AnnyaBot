@@ -145,6 +145,18 @@ def get_valid_user_reminders(user_id):
     return reminders
 
 
+def get_valid_user_reminders_from_category(user_id, category_name):
+    with SessionLocal() as session:
+        reminders = session.query(Reminder).join(Reminder.categories).filter(
+            and_(Reminder.user_id == user_id, Reminder.is_done == False, Category.name == category_name)
+        ).order_by(Reminder.reminder_time).all()
+
+    for r in reminders:
+        r.message = encryption.decrypt(r.message)
+
+    return reminders
+
+
 def get_reminders_to_remind():
     with SessionLocal() as session:
         current_time = datetime.datetime.now()

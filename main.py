@@ -1,8 +1,6 @@
 import asyncio
 import datetime
 import os
-import threading
-from enum import Enum
 
 from aiogram import Bot, Dispatcher, types, Router
 from aiogram.filters import CommandStart
@@ -11,7 +9,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import handlers
 import keyboards.main
 from db import db
-from services import reminder_service
 from services.reminder_service import periodic_update
 
 # Настройка бота
@@ -30,7 +27,6 @@ async def cmd_start(message: types.Message):
                          reply_markup=keyboards.main.keyboard)
 
 
-# Обработчик нажатия на кнопки
 @dp.callback_query()
 async def handle_callback(callback: types.CallbackQuery):
     if callback.data == "info":
@@ -61,10 +57,9 @@ async def handle_callback(callback: types.CallbackQuery):
         elif message == "more":
             with db.SessionLocal() as session:
                 reminder = session.query(db.Reminder).filter(db.Reminder.id == remind_id).first()
-                if reminder.is_delta_done:
-                    reminder.reminder_time = datetime.datetime.now() + datetime.timedelta(minutes=5)
-                else:
-                    reminder.reminder_time_delta = datetime.datetime.now() + datetime.timedelta(minutes=5)
+                if reminder.reminder_time < datetime.datetime.now():
+                    reminder.is_done = True
+                reminder.reminder_time_delta = datetime.datetime.now() + datetime.timedelta(minutes=5)
                 reminder.is_delta_done = False
                 session.commit()
 

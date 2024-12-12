@@ -1,6 +1,6 @@
 import datetime
 
-from aiogram import Router, types
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
@@ -8,9 +8,8 @@ from aiogram.types import Message
 import keyboards.builder
 import utils
 from db import db
-from main import dp
 from services import reminder_service
-from states.states import RemindState
+from states.states import RemindState, RemindCategoryState
 
 router = Router()
 
@@ -29,7 +28,9 @@ async def remind_list(message: Message):
 
     await message.answer("Список напоминаний:")
     for r in reminders:
-        await message.answer(r.message + "\n\n===== Информация о напоминании =====\nВремя: " + r.reminder_time.strftime('%Y-%m-%d %H:%M:%S') + "\nСработает через: " + utils.dateutil.difference_to_string(r.reminder_time - datetime.datetime.now()))
+        await message.answer(r.message + "\n\n===== Информация о напоминании =====\nВремя: " + r.reminder_time.strftime(
+            '%Y-%m-%d %H:%M:%S') + "\nСработает через: " + utils.dateutil.difference_to_string(
+            r.reminder_time - datetime.datetime.now()))
 
 
 @router.message(Command("my_categories"))
@@ -41,23 +42,51 @@ async def my_categories(message: Message):
 
     categories_formated = "\n   - ".join([f"{c.name.strip()}" for c in categories])
     categories_formated = "\n   - " + categories_formated
-    await message.answer("Ваши категории:" +categories_formated)
+    await message.answer("Ваши категории:" + categories_formated)
 
+
+@router.message(Command("remind_category"))
+async def remind_category(message: Message, state: FSMContext):
+    await state.set_state(RemindCategoryState.is_complete)
+    category_names = [category.name for category in db.get_user_tg_id_categories(message.from_user.id)]
+    await message.answer("Какую категории вы хотите увидеть?",
+                         reply_markup=keyboards.builder.reply(category_names))
+
+
+@router.message(RemindCategoryState.is_complete)
+async def remind_category_complete(message: Message, state: FSMContext):
+    user = db.get_user_by_username(message.from_user.username)
+    if user is None:
+        await message.answer("Вы не зарегистрированы", reply_markup=keyboards.builder.remove)
+        return
+
+    reminders = db.get_valid_user_reminders_from_category(user.id, message.text)
+    if not reminders:
+        await message.answer("Список напоминаний для категории " + message.text + " пуст", reply_markup=keyboards.builder.remove)
+        return
+
+    await message.answer("Список напоминаний:", reply_markup=keyboards.builder.remove)
+    for r in reminders:
+        await message.answer(r.message + "\n\n===== Информация о напоминании =====\nВремя: " + r.reminder_time.strftime(
+            '%Y-%m-%d %H:%M:%S') + "\nСработает через: " + utils.dateutil.difference_to_string(
+            r.reminder_time - datetime.datetime.now()))
 
 
 @router.message(Command("add_remind"))
 async def add_remind(message: Message, state: FSMContext):
     await state.set_state(RemindState.message)
-    await message.answer("Введите текст напоминания:", reply_markup=keyboards.builder.remove)
+    await message.answer("Введите текст напоминания:",
+                         reply_markup=keyboards.builder.remove)
 
 
-@router.message(RemindState.message)
+@router.message(RemindState.message, F.text)
 async def remind_message(message: Message, state: FSMContext):
     await state.update_data(message=message.text)
     await state.set_state(RemindState.categories)
     category_names = [category.name for category in db.get_user_tg_id_categories(message.from_user.id)]
     category_names.insert(0, "Без категории")
-    await message.answer("К каким категориям относится напоминание? Можно написать несколько через запятую.", reply_markup=keyboards.builder.reply(category_names))
+    await message.answer("К каким категориям относится напоминание? Можно написать несколько через запятую.",
+                         reply_markup=keyboards.builder.reply(category_names))
 
 
 @router.message(RemindState.categories)
@@ -93,7 +122,8 @@ async def remind_delta(message: Message, state: FSMContext):
         await state.set_state(RemindState.is_complete)
         data = await state.get_data()
         await message.answer(
-            "Все верно?\n\nНапоминание: " + data['message'] + "\nКатегории: " + str(data['categories']) + "\nНачало:" + data['reminder_time'].strftime('%Y-%m-%d %H:%M:%S'),
+            "Все верно?\n\nНапоминание: " + data['message'] + "\nКатегории: " + str(data['categories']) + "\nНачало:" +
+            data['reminder_time'].strftime('%Y-%m-%d %H:%M:%S'),
             reply_markup=keyboards.builder.reply(["Да", "Нет"])
         )
         return
@@ -105,7 +135,8 @@ async def remind_delta(message: Message, state: FSMContext):
     await state.set_state(RemindState.is_complete)
     data = await state.get_data()
     await message.answer(
-        "Все верно?\n\nНапоминание: " + data['message'] + "\nКатегории: " + str(data['categories']) + "\nНачало: " + data['reminder_time'].strftime('%Y-%m-%d %H:%M:%S') + "\nНапомнить за: " + str(data['delta']) + " минут",
+        "Все верно?\n\nНапоминание: " + data['message'] + "\nКатегории: " + str(data['categories']) + "\nНачало: " +
+        data['reminder_time'].strftime('%Y-%m-%d %H:%M:%S') + "\nНапомнить за: " + str(data['delta']) + " минут",
         reply_markup=keyboards.builder.reply(["Да", "Нет"])
     )
 
@@ -116,9 +147,12 @@ async def remind_is_complete(message: Message, state: FSMContext):
         data = await state.get_data()
         user = db.get_user_by_telegram_id(message.from_user.id)
         await reminder_service.add_reminder(user.id, data['message'], data['reminder_time'],
-                                            data['reminder_time'] - datetime.timedelta(minutes=data['delta']), data['categories'] if len(data['categories']) else None)
+                                            data['reminder_time'] - datetime.timedelta(minutes=data['delta']),
+                                            data['categories'] if len(data['categories']) else None)
         time_to_remind = data['reminder_time'] - datetime.datetime.now()
-        await message.answer("Напоминание добавлено. Сработает через " + utils.dateutil.difference_to_string(time_to_remind), reply_markup=keyboards.builder.remove)
+        await message.answer(
+            "Напоминание добавлено. Сработает через " + utils.dateutil.difference_to_string(time_to_remind),
+            reply_markup=keyboards.builder.remove)
     else:
         await message.answer("Напоминание не добавлено")
     await state.clear()

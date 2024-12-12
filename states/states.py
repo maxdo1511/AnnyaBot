@@ -7,3 +7,7 @@ class RemindState(StatesGroup):
     delta = State()
     categories = State()
     is_complete = State()
+
+
+class RemindCategoryState(StatesGroup):
+    is_complete = State()
