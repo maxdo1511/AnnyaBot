@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, select, create_engine, and_, func, text, Boolean, \
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, create_engine, and_, Boolean, \
     or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -79,7 +79,9 @@ class UserCategory(Base):
 
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@localhost/annbot"  # Замените на ваши данные
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/postgres"
 engine = create_engine(DATABASE_URL, echo=False)
 
 SessionLocal = sessionmaker(bind=engine)

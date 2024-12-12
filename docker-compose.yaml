@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD:
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    volumes:
+      - db-data5:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+  bot:
+    build: Bot
+    environment:
+      - DB_PASSWORD=
+      - DB_USER=
+      - DB_HOST=
+      - DB_PORT=
+      - HASH_KEY=
+      - TOKEN=
+    depends_on:
+      - db
+volumes:
+  data:
+  db-data5:
